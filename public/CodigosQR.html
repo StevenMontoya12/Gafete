@@ -110,83 +110,11 @@
 
     <script>
         let qrDataArray = []; // Array para almacenar los datos de los QR
-
-        fetch('/AllQR')
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error('Error al obtener los datos');
-                }
-                return response.json();
-            })
-            .then(data => {
-                const container = document.getElementById('qrContainer');
-                container.innerHTML = '';
-                qrDataArray = data; // Guardamos los datos de los QR para uso en el botón ZIP
-
-                if (data.length === 0) {
-                    container.innerHTML = '<p class="text-center text-muted">No hay gafetes registrados.</p>';
-                    return;
-                }
-
-                data.forEach(({ name, qrCode }) => {
-                    const qrItem = document.createElement('div');
-                    qrItem.className = 'qr-item';
-
-                    const img = document.createElement('img');
-                    img.src = qrCode;
-                    img.alt = `QR de ${name}`;
-
-                    const title = document.createElement('h4');
-                    title.textContent = name;
-
-                    const downloadButton = document.createElement('button');
-                    downloadButton.textContent = 'Descargar QR';
-                    downloadButton.className = 'btn btn-primary btn-sm';
-                    downloadButton.onclick = () => {
-                        const link = document.createElement('a');
-                        link.download = `${name}-QR.png`;
-                        link.href = qrCode;
-                        link.click();
-                    };
-
-                    qrItem.appendChild(title);
-                    qrItem.appendChild(img);
-                    qrItem.appendChild(downloadButton);
-                    container.appendChild(qrItem);
-                });
-            })
-            .catch(error => {
-                console.error('Error al cargar los códigos QR:', error);
-                document.getElementById('qrContainer').innerHTML = '<p class="text-center text-danger">Error al cargar los códigos QR.</p>';
-            });
-
-        // Función para descargar todos los QR en un ZIP
-        document.getElementById('downloadAll').addEventListener('click', () => {
-            if (qrDataArray.length === 0) {
-                alert('No hay códigos QR para descargar.');
-                return;
-            }
-
-            const zip = new JSZip();
-            const folder = zip.folder('CodigosQR'); // Creamos una carpeta en el ZIP
-
-            qrDataArray.forEach(({ name, qrCode }) => {
-                const base64Data = qrCode.replace(/^data:image\/png;base64,/, ''); // Quitamos el prefijo del Data URL
-                folder.file(`${name}-QR.png`, base64Data, { base64: true });
-            });
-
-            // Generamos y descargamos el ZIP
-            zip.generateAsync({ type: 'blob' }).then(content => {
-                saveAs(content, 'CodigosQR.zip');
-            });
-        });
-
-
-        // Función para normalizar los nombres (remover tildes y convertir a minúsculas)
-        const normalizeText = (text) => {
-            return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-        };
-
+        let originalDataArray = []; // Array para almacenar todos los datos originales
+        const itemsPerPage = 10; // Cantidad de ítems por página
+        let currentPage = 1; // Página actual
+        let totalPages = 1;
+    
         // Crear el input de búsqueda y agregarlo al DOM
         const searchInput = document.createElement("input");
         searchInput.type = "text";
@@ -194,22 +122,140 @@
         searchInput.className = "form-control my-3 mx-auto";
         searchInput.style.maxWidth = "400px";
         document.querySelector(".container").insertBefore(searchInput, document.getElementById("qrContainer"));
-
-        // Escuchar el evento de input para filtrar los resultados
+    
+        // Crear contenedor para la paginación
+        const paginationContainer = document.createElement("div");
+        paginationContainer.className = "pagination-container text-center my-4";
+        document.querySelector(".container").appendChild(paginationContainer);
+    
+        // Función para normalizar los nombres (remover tildes y convertir a minúsculas)
+        const normalizeText = (text) => {
+            return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+        };
+    
+        // Función para actualizar la vista de paginación
+        function updatePagination() {
+            paginationContainer.innerHTML = "";
+    
+            // Crear botones para cada página
+            for (let i = 1; i <= totalPages; i++) {
+                const pageButton = document.createElement("button");
+                pageButton.textContent = i;
+                pageButton.className = `btn btn-sm mx-1 ${i === currentPage ? "btn-primary" : "btn-outline-primary"}`;
+                pageButton.addEventListener("click", () => {
+                    currentPage = i;
+                    displayPage();
+                });
+                paginationContainer.appendChild(pageButton);
+            }
+        }
+    
+        // Función para mostrar los datos en la página actual
+        function displayPage() {
+            const container = document.getElementById("qrContainer");
+            container.innerHTML = "";
+    
+            const start = (currentPage - 1) * itemsPerPage;
+            const end = start + itemsPerPage;
+    
+            qrDataArray.slice(start, end).forEach(({ name, qrCode }) => {
+                const qrItem = document.createElement("div");
+                qrItem.className = "qr-item";
+    
+                const img = document.createElement("img");
+                img.src = qrCode;
+                img.alt = `QR de ${name}`;
+    
+                const title = document.createElement("h4");
+                title.textContent = name;
+    
+                const downloadButton = document.createElement("button");
+                downloadButton.textContent = "Descargar QR";
+                downloadButton.className = "btn btn-primary btn-sm";
+                downloadButton.onclick = () => {
+                    const link = document.createElement("a");
+                    link.download = `${name}-QR.png`;
+                    link.href = qrCode;
+                    link.click();
+                };
+    
+                qrItem.appendChild(title);
+                qrItem.appendChild(img);
+                qrItem.appendChild(downloadButton);
+                container.appendChild(qrItem);
+            });
+        }
+    
+        // Inicializar la paginación con datos
+        function initPagination(data) {
+            originalDataArray = [...data]; // Guardamos una copia de los datos originales
+            qrDataArray = data;
+            totalPages = Math.ceil(qrDataArray.length / itemsPerPage);
+            currentPage = 1;
+            updatePagination();
+            displayPage();
+        }
+    
+        // Escuchar el evento de input para filtrar resultados
         searchInput.addEventListener("input", () => {
-            const filter = normalizeText(searchInput.value); // Normalizamos el valor ingresado
-            const qrItems = document.querySelectorAll(".qr-item");
-
-            qrItems.forEach((item) => {
-                const name = normalizeText(item.querySelector("h4").textContent); // Normalizamos el nombre del elemento
-                if (name.includes(filter)) {
-                    item.style.display = "block"; // Mostrar si coincide
-                } else {
-                    item.style.display = "none"; // Ocultar si no coincide
+            const filter = normalizeText(searchInput.value);
+    
+            if (filter === "") {
+                // Restaurar datos originales cuando el campo de búsqueda está vacío
+                qrDataArray = [...originalDataArray];
+            } else {
+                qrDataArray = originalDataArray.filter(({ name }) =>
+                    normalizeText(name).includes(filter)
+                );
+            }
+    
+            totalPages = Math.ceil(qrDataArray.length / itemsPerPage);
+            currentPage = 1;
+            updatePagination();
+            displayPage();
+        });
+    
+        // Cargar datos desde el backend
+        fetch("/AllQR")
+            .then((response) => {
+                if (!response.ok) {
+                    throw new Error("Error al obtener los datos");
                 }
+                return response.json();
+            })
+            .then((data) => {
+                if (data.length === 0) {
+                    document.getElementById("qrContainer").innerHTML = '<p class="text-center text-muted">No hay gafetes registrados.</p>';
+                    return;
+                }
+                initPagination(data); // Inicializar con todos los datos
+            })
+            .catch((error) => {
+                console.error("Error al cargar los códigos QR:", error);
+                document.getElementById("qrContainer").innerHTML = '<p class="text-center text-danger">Error al cargar los códigos QR.</p>';
+            });
+    
+        // Función para descargar todos los QR en un ZIP
+        document.getElementById("downloadAll").addEventListener("click", () => {
+            if (originalDataArray.length === 0) {
+                alert("No hay códigos QR para descargar.");
+                return;
+            }
+    
+            const zip = new JSZip();
+            const folder = zip.folder("CodigosQR");
+    
+            originalDataArray.forEach(({ name, qrCode }) => {
+                const base64Data = qrCode.replace(/^data:image\/png;base64,/, "");
+                folder.file(`${name}-QR.png`, base64Data, { base64: true });
+            });
+    
+            zip.generateAsync({ type: "blob" }).then((content) => {
+                saveAs(content, "CodigosQR.zip");
             });
         });
-
     </script>
+    
+    
 </body>
 </html>
