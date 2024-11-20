@@ -3,6 +3,11 @@ const path = require('path');
 const multer = require('multer');
 const mysql = require('mysql2');
 const QRCode = require('qrcode');
+const fs = require('fs');
+
+
+
+
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -432,38 +437,6 @@ app.get('/Gafetes/BuscarGafete', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'buscarGafete.html'));
 });
 
-// Ruta para manejar la búsqueda y devolver datos en JSON
-app.get('/Gafetes/BuscarGafeteData', (req, res) => {
-    const { name, lastName, id } = req.query;
-
-    const sql = 'SELECT * FROM gafetes WHERE id = ? AND name = ? AND first_name = ?';
-    connection.query(sql, [id, name, lastName], (err, results) => {
-        if (err) {
-            console.error('Error al consultar la base de datos:', err);
-            return res.status(500).json({ error: 'Error al buscar el gafete' });
-        }
-        if (results.length === 0) {
-            return res.status(404).json({ error: 'Gafete no encontrado' });
-        }
-
-        const formData = results[0];
-        const photoBase64 = formData.photo ? formData.photo.toString('base64') : null;
-        const photoUrl = photoBase64 ? `data:image/jpeg;base64,${photoBase64}` : null;
-
-        // Generar el código QR basado en la URL con el ID actual
-        const urlToRedirect = `https://coventryschool.edu.mx/Gafetes/DatosQR.html?id=${id}`;
-
-        QRCode.toDataURL(urlToRedirect, (err, qrCode) => {
-            if (err) {
-                console.error('Error al generar el código QR:', err);
-                return res.status(500).json({ error: 'Error al generar el código QR' });
-            }
-
-            // Enviar los datos como JSON para usarlos en el frontend
-            res.json({ name: formData.name, job: formData.job, qrCode, photo: photoUrl, id: formData.id });
-        });
-    });
-});
 
 
 
@@ -497,6 +470,66 @@ app.get('/Gafetes/datosQR/:id', (req, res) => {
         });
     });
 });
+
+
+
+// Servir el archivo HTML para mostrar los códigos QR
+app.get('/AllQR/Codigo', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'CodigosQR.html'));
+});
+
+
+
+app.get('/AllQR', async (req, res) => {
+    console.log('Ruta /AllQR fue llamada');
+    const sql = 'SELECT id, name FROM gafetes'; // Obtenemos ID y nombre desde la base de datos
+
+    connection.query(sql, async (err, results) => {
+        if (err) {
+            console.error('Error al consultar la base de datos:', err);
+            return res.status(500).send('Error al obtener los datos');
+        }
+
+        if (results.length === 0) {
+            console.warn('No se encontraron gafetes en la base de datos');
+            return res.status(404).send('No se encontraron gafetes');
+        }
+
+        try {
+            const qrDataArray = [];
+
+            // Iteramos sobre los resultados y generamos los QR
+            for (const { id, name } of results) {
+                // Generamos un enlace personalizado para el QR basado en el ID del usuario
+                const qrLink = `https://coventryschool.edu.mx/Gafetes/DatosQR.html?id=${id}`;
+
+                // Generamos el código QR como un Data URL
+                const qrCode = await QRCode.toDataURL(qrLink);
+
+                // Añadimos los datos al array
+                qrDataArray.push({
+                    id,
+                    name,
+                    qrCode,
+                    link: qrLink, // Incluimos el enlace personalizado en los datos
+                });
+            }
+
+            console.log('Códigos QR generados:', qrDataArray);
+            res.json(qrDataArray); // Devolvemos todos los datos generados
+        } catch (error) {
+            console.error('Error al generar los códigos QR:', error);
+            res.status(500).send('Error al generar los códigos QR');
+        }
+    });
+});
+
+
+
+
+
+
+
 
 const server = app.listen(PORT, () => {
     console.log(`Servidor corriendo en https://coventryschool.edu.mx:Gafetes`);
